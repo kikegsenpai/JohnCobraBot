@@ -1,57 +1,72 @@
 package MCTS;
 
 import java.util.ArrayList;
+import java.util.LinkedList;
 
+import aiinterface.CommandCenter;
+import enumerate.Action;
 import struct.FrameData;
+import struct.GameData;
 
 public class Node {
-	//Linked
+
+	// CONSTANTS
+
+	// LINK
+	public Action associatedAction;
 	public Node parent;
 	public ArrayList<Node> children;
-	public int depth;
-	
-	//Data
+	public int depth; // Profundidad
+
+	// DATA
 	public boolean player;
-	public FrameData fd;				//State
-	public int t;						//Total Score of Node
-	public int n;						//Times Visited
-	
-	
-	public Node(FrameData fd,boolean player) {
-		parent=null;
-		this.player=player;
-		this.fd=fd;
-		
-		depth=0;
-		n=0;
-		t=0;
+	public FrameData fd; // State
+	public GameData gameData; // GameData
+	public int t; // Total Score of Node
+	public int n; // Times Visited
+	public double ucb1; // Value of select criteria
+
+	public Node(FrameData fd, GameData gameData, boolean player) {
+		this.associatedAction = null;
+		this.gameData = gameData;
+		parent = null;
+		children = null;
+		this.player = player;
+		this.fd = fd;
+
+		depth = 0;
+		n = 0;
+		t = 0;
 	}
-	
-	public Node(Node parent, FrameData fd, boolean player) {
-		this.parent=parent;
-		this.player=player;
-		this.fd=fd;
-		
-		depth=depth+1;
-		n=0;
-		t=0;	
+
+	public Node(Node parent, GameData gameData, FrameData fd, boolean player, Action action) {
+		this.associatedAction = action;
+		this.gameData = gameData;
+		this.parent = parent;
+		children = null;
+
+		this.player = player;
+		this.fd = fd;
+
+		depth = depth + 1;
+		n = 0;
+		t = 0;
 	}
-	
-	public double calculateUCB1() {
-		double c=Math.sqrt(2);
-		double result;
-		if(n==0)
-			result=Double.MAX_VALUE;
-		else
-			result = t/n+c*Math.sqrt(Math.log(this.parent.n)/n);
-		
-		return result;
+
+	public boolean isLeaf() {
+		return children==null;
 	}
-	
-	public double calculateScore() {
-		double myHp = fd.getCharacter(player).getHp();
-		double opponentHp = fd.getCharacter(!player).getHp();
-		
-		return myHp-opponentHp;
+
+	public void printNode(Node node) {
+		System.out.println(" :" + node.n);
+		for (int i = 0; i < node.children.size(); i++) {
+			System.out.println(i + ", :" + node.children.get(i).n + ", :" + node.children.get(i).depth + ",score:"
+					+ node.children.get(i).t / node.children.get(i).n + ",ucb:" + node.children.get(i).ucb1);
+		}
+		System.out.println("");
+		for (int i = 0; i < node.children.size(); i++) {
+				printNode(node.children.get(i));
+		}
 	}
+
 }
