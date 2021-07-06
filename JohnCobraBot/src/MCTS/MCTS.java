@@ -14,161 +14,248 @@ import struct.FrameData;
 import struct.GameData;
 
 public class MCTS {
-	
-	//CONSTANTS
-	public static final int N_FRAMES_SIMULATED = 60;	
-	public static final int N_ITERATIONS = 10;	
 
+	// CONSTANTS
+	public static final int N_FRAMES_SIMULATED = 20;
+	public static final int DEPTH_LIMIT = 2;
+	public static final int N_ITERATIONS = 50;
+	public static final int N_RANDOM_ACTIONS = 3;
 	public static final double C = Math.sqrt(2);
 
-	
-	//DATA
-	boolean player;
-	Node root;
-	
+	// TOOLS
+	public Simulator simulator;
+	public boolean player;
+	public Random random;
+
+	// DATA
+	public Node root;
+
 	private LinkedList<Action> myActionPool;
 	private LinkedList<Action> enemyActionPool;
-	private Simulator simulator;
-	
-	/*
-	private LinkedList<Action> selectedMyActions;
-	private int myOriginalHp;
-	private int oppOriginalHp;
-	private FrameData frameData;
-	private CommandCenter commandCenter;
-	private GameData gameData;
-	private boolean isCreateNode;
-	Deque<Action> mAction;
-	Deque<Action> oppAction;
-	*/
-	
-	private Random random;
-	private CharacterData oppCharacter;
-	private CharacterData myCharacter;
+	private CharacterData oppOGState;
+	private CharacterData playerOGState;
+	public FrameData fd; // State
+	public GameData gameData; // GameData	
 
-	
-	public MCTS(boolean player) {
-		random=new Random();
-		this.player=player;
+	public MCTS(boolean player, FrameData fd, GameData gameData, LinkedList<Action> myActionPool,
+			LinkedList<Action> enemyActionPool) {
+		random = new Random();
+
+		this.simulator = gameData.getSimulator();
+		this.player = player;
+		this.fd = fd;
+		this.gameData = gameData;
+		this.myActionPool = myActionPool;
+		this.enemyActionPool = enemyActionPool;
+		oppOGState = fd.getCharacter(!player);
+		playerOGState = fd.getCharacter(player);
+
 	}
-	
+
 	public void expansion(Node node) {
-		node.children=new ArrayList<Node>();
-		for(int i=0;i<myActionPool.size();i++) {
-			node.children.add(new Node(node,node.gameData, node.fd, player, myActionPool.get(i)));
+		node.children = new ArrayList<Node>();
+
+		for (int i = 0; i < myActionPool.size(); i++) {
+			Node newNode = new Node(node, myActionPool.get(i));
+			node.children.add(newNode);
 		}
-		
+
 	}
-	
+
 	public Node selection(Node node) {
-		
-		Node selectedNode=null;
-		double bestUCB1=-9999;
+
+		Node selectedNode = null;
+		double bestUCB1 = -9999;
 		for (Node child : node.children) {
-			if (child.n == 0) {
-				calculateUCB1(child);
-			}
-			if(bestUCB1 < child.ucb1) {
-		        selectedNode = child;
-		        bestUCB1 = child.ucb1;
+			calculateUCB1(child);
+
+			if (bestUCB1 < child.ucb1) {
+				selectedNode = child;
+				bestUCB1 = child.ucb1;
 			}
 		}
-		
+
 		return selectedNode;
 	}
-	
+
 	public double playout(Node node) {
-		simulator=new Simulator(node.gameData);
-		FrameData result = simulator.simulate(node.fd, node.player, myActionPool, enemyActionPool, N_FRAMES_SIMULATED);
-		return calculateScore(result);
+
+		LinkedList<Action> myRandomActions = new LinkedList<Action>();
+		LinkedList<Action> enemyRandomActions = new LinkedList<Action>();
+
+		myRandomActions.addFirst(node.action);
 		
-	}
-	
-	public void update(Node node, double score) {
-		
-		Node current=node;
-		while(current!=null) {
-			current.n++;
-			current.t+=score;
-			current=current.parent;
+		for (int i = 0; i < N_RANDOM_ACTIONS; i++) {
+			enemyRandomActions.add(enemyActionPool.get(random.nextInt(enemyActionPool.size())));
 		}
-		
+
+		// SIMULA LA ACCION DEL NODO PARA EL PLAYER Y X ACCIONES DEL ENEMIGO ALEATORIAS
+		FrameData result = simulator.simulate(fd, player, myRandomActions, enemyRandomActions, N_FRAMES_SIMULATED);
+
+		return calculateScore(result);
+
 	}
-	
-	public void execute() {
-		
-		Node current=root;
-		expansion(current);
 
-		boolean doneIteration=false;
+	public void update(Node node, double score) {
+		Node current = node;
+		while (current != null) {
+			current.n++;
+			current.t += score;
+			current = current.parent;
+		}
+	}
 
-		for(int i=0;i<N_ITERATIONS;i++) {
-			while(!doneIteration) {
+	public void executeFull() {
+		System.out.println("POSICION: "+fd.getCharacter(player).getCenterX());
+		System.out.println("DISTANCIA: "+fd.getDistanceX());
+
+		root = new Node(null);
+		expansion(root);
+
+		Node current;
+		boolean doneIteration;
+
+
+		for (int i = 0; i < N_ITERATIONS; i++) {
+			
+			doneIteration = false;
+			current = root;
+			
+			while (!doneIteration) {
 				
-				current=selection(current);						//SELECIONA BEST UCB1
+				current = selection(current); 										// SELECIONA BEST UCB1
 				
-				if(current.isLeaf()) {							//SI ES HOJA -> SE HARÁ UNA SIMULACIÓN
+				if (current.isLeaf()) { 											// SI ES HOJA -> SE HARÁ UNA SIMULACIÓN
 					
-					if(current.n==0) {							//SI NO HA SIDO VISITADA ANTES -> ADEMÁS SE LE AÑADIRAN LOS HIJOS , Y SE SELECCIONARÁ UNO PARA LA SIMULACIÓN
+					if (current.n == 0 && current.depth < DEPTH_LIMIT) { 			// SI NO HA SIDO VISITADA ANTES -> ADEMÁS SE LE AÑADIRAN LOS HIJOS	
 						expansion(current);
-						current=selection(current);
+						current = selection(current); 								// SELECCIONARÁ UNO PARA LA SIMULACIÓN
 					}
 					
-					update(current,playout(current));			//SIMULAMOS Y ACTUALIZAMOS LOS VALORES DE N (VECES VISITADA) Y T (SCORE TOTAL)
-					doneIteration=true;							//TERMINAMOS LA ITERACIÓN
+					double score = playout(current);
+					update(current, score); 										// SIMULAMOS Y ACTUALIZAMOS LOS VALORES DE N (VECES VISITADA) Y T
+					doneIteration = true; 											// TERMINAMOS LA ITERACIÓN
 					
-				}												//SI NO ES HOJA -> EXPLORAMOS LOS SIGUIENTES
-			}
-		}
+				} 																	// SI NO ES HOJA -> SELECCIONAMOS EL SIGUIENTE
+			}		
+			//System.out.println("---------------------------------------------------------");
+		}	
+		
+		//printTree();
 	}
 	
+	public boolean executeOneIteration() {
+		
+		
+		boolean doneIteration = false;
+		Node current = root;
+			
+		while (!doneIteration) {
+				
+			current = selection(current); 										// SELECIONA BEST UCB1
+				
+			if (current.isLeaf()) { 											// SI ES HOJA -> SE HARÁ UNA SIMULACIÓN
+					
+				if (current.n == 0 && current.depth < DEPTH_LIMIT) { 			// SI NO HA SIDO VISITADA ANTES -> ADEMÁS SE LE AÑADIRAN LOS HIJOS	
+					expansion(current);
+					current = selection(current); 								// SELECCIONARÁ UNO PARA LA SIMULACIÓN
+				}
+					
+				double score = playout(current);
+				update(current, score); 										// SIMULAMOS Y ACTUALIZAMOS LOS VALORES DE N (VECES VISITADA) Y T
+				doneIteration = true; 											// TERMINAMOS LA ITERACIÓN
+					
+			} 																	// SI NO ES HOJA -> SELECCIONAMOS EL SIGUIENTE
+		}		
+		
+		
+		//printTree();
+		return doneIteration;
+
+
+	}
+
 	public Action getBestUCB1Child() {
-		return null;
-	}
-	
-	public Action getMostVisitedChild() {
-		double mostVisited=0;
-		Action mostVisitedAction=Action.BACK_STEP;
-		
-		for(int i=0; i<root.children.size();i++) {
-			if(root.children.get(i).n>mostVisited) {
-				mostVisited=root.children.get(i).n;
-				mostVisitedAction = root.children.get(i).associatedAction;
+		double best = 0;
+		Action bestAction = Action.BACK_STEP;
+
+		for (int i = 0; i < root.children.size(); i++) {
+			if (root.children.get(i).n > best) {
+				best = root.children.get(i).n;
+				bestAction = root.children.get(i).action;
 			}
 		}
-		
+		System.out.println("ELECCION: "+bestAction.name());
+		System.out.println("=============================================================");
+
+		return bestAction;
+	}
+
+	public Action getMostVisitedChild() {
+		double mostVisited = 0;
+		Action mostVisitedAction = Action.BACK_STEP;
+
+		for (int i = 0; i < root.children.size(); i++) {
+			if (root.children.get(i).n > mostVisited) {
+				mostVisited = root.children.get(i).n;
+				mostVisitedAction = root.children.get(i).action;
+			}
+		}
+		System.out.println("ELECCION: "+mostVisitedAction.name());
+		System.out.println("=============================================================");
+
 		return mostVisitedAction;
 	}
-	
-	public void setNewRoot(FrameData fd,GameData gameData,LinkedList<Action> myActionPool,LinkedList<Action> enemyActionPool) {
-		this.root=new Node(null, gameData, player);
-		
-		this.enemyActionPool=enemyActionPool;
-		this.myActionPool=myActionPool;
-		System.out.print("HOLY SHIT");
 
-	}
-	
-	public double calculateScore(FrameData fd) { 													// ADD MULTIPLOS SITUACIONES FAVORABLES COMO STUN
+	public double calculateScore(FrameData fd) { // ADD MULTIPLOS SITUACIONES FAVORABLES COMO STUN
+		
 		double myHp = fd.getCharacter(player).getHp();
 		double opponentHp = fd.getCharacter(!player).getHp();
-		return myHp-opponentHp;
+		
+		double myDiffHp = myHp - playerOGState.getHp() ;
+		double opponentDiffHp = opponentHp - oppOGState.getHp() ;
+		
+		int combo = fd.getCharacter(player).getHitCount();
+		boolean hits = fd.getCharacter(player).isHitConfirm();
+		
+		State myState = fd.getCharacter(player).getState();
+		State opponentState = fd.getCharacter(!player).getState();
+		
+		double result = (myDiffHp-opponentDiffHp)*10 + combo*5;
+
+		if(hits)
+			result+=10;
+		if(myState==State.DOWN)
+			result-=50;
+		if(opponentState==State.DOWN)
+			result+=50;
+		
+		return result;
+		
 	}
-	
+
 	public double calculateUCB1(Node node) {
 		double result;
-		if(node.n==0)
-			result=99999 + random.nextInt();
+		if (node.n == 0)
+			result = 9999 + random.nextInt(30);
 		else
-			result = node.t/node.n+C*Math.sqrt(Math.log(node.parent.n)/node.n);
-		node.ucb1=result;
+			result = node.t / node.n + C * Math.sqrt(Math.log(node.parent.n) / node.n);
+		node.ucb1 = result;
 		return result;
 	}
-	
-	public void printRoot() {
-		root.printNode(root);
+
+	public void printTree() {
+		printNode(root);
 	}
-	
+
+	public void printNode(Node node) {
+		for (int i = 0; i < node.depth; i++)
+			System.out.print("    ");
+		System.out.println(node);
+		if (node.children != null) {
+			for (int i = 0; i < node.children.size(); i++)
+				printNode(node.children.get(i));
+		}
+	}
+
 }
-
-

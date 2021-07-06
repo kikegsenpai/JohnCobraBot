@@ -1,24 +1,46 @@
 import aiinterface.AIInterface;
 import aiinterface.CommandCenter;
+import struct.AttackData;
 import struct.CharacterData;
 import struct.FrameData;
 import struct.GameData;
 import struct.Key;
 import struct.MotionData;
 
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.LinkedList;
 import java.util.Random;
 
 import MCTS.MCTS;
+import MCTS.Node;
 import enumerate.Action;
 import enumerate.State;
+import simulator.Simulator;
 
 /**
  * @author Enrique Garrido Sánchez
  **/
 public class JohnCobraBot implements AIInterface {
+	
+	public static final int PROCESSING_TIME = 160 * 100000;
 
+	
+	/*
+	
+	TO DO:
+	SET ENEMY ACTION POOL EFICIENTLY
+	ESCAPE CORNERS
+	VIGILAR BOLA DE FUEGO
+	LEVANTARSE SIN DAÑO ESQUINA CROUCH_KICK
+	MEDIR DISTANCIAS MEJOR
+	TIME LIMIT TO EXECUTION VV
+
+	 */
+	
 	// PARÁMETROS DE LANZAMIENTO
 	// -n 10 --c1 ZEN --c2 ZEN --a1 JohnCobraBot --a2 SimpleAI --fastmode --mute
 	// -n 10 --c1 ZEN --c2 ZEN --a1 JohnCobraBot --a2 SimpleAI --fastmode --mute
@@ -32,29 +54,56 @@ public class JohnCobraBot implements AIInterface {
 	private boolean playerNumber;
 	private FrameData frameData;
 	private CommandCenter cc;
-	private int lastDistance;
-	private Random randomizer = new Random();
-	private boolean isLastActionMoved = false;
 	private GameData gameData;
 
 	LinkedList<Action> myActs; // Action waiting to be executed
-	// LinkedList<Action> simMyActs; //Simulated action
-	// LinkedList<Action> simOppActs; //Simulated opponent's action
 
-	LinkedList<Action> gapCloser; // List of actions used to dash or jump closer
-	LinkedList<Action> attackGround; // List of actions used on ground
-	LinkedList<Action> attackAir; // List of actions used on air
-	LinkedList<Action> skillGround; // List of skills that needs ENERGY on ground
-	LinkedList<Action> skillAir; // List of skills that needs ENERGY on air
-	LinkedList<Action> projectiles; // List of projectiles that can be thrown
+	/*
+	 * LinkedList<Action> simMyActs; //Simulated action LinkedList<Action>
+	 * simOppActs; //Simulated opponent's action LinkedList<Action> gapCloser; //
+	 * List of actions used to dash or jump closer LinkedList<Action> attackGround;
+	 * // List of actions used on ground LinkedList<Action> attackAir; // List of
+	 * actions used on air LinkedList<Action> skillGround; // List of skills that
+	 * needs ENERGY on ground LinkedList<Action> skillAir; // List of skills that
+	 * needs ENERGY on air LinkedList<Action> projectiles; // List of projectiles
+	 * that can be thrown
+	 */
 
-	private CharacterData myCharacter;
-	private CharacterData opponent;
+	private CharacterData myCharacterData;
+	private CharacterData opponentData;
 	private ArrayList<MotionData> myCharacterMotion;
 	private ArrayList<MotionData> opponentMotion;
+	
 	private LinkedList<Action> enemyActionPool;
 	private LinkedList<Action> myActionPool;
 
+	private LinkedList<Action> getClose;
+	private LinkedList<Action> getCloseSkill;
+
+	private LinkedList<Action> evade;
+	private LinkedList<Action> groundGuard;
+
+	private LinkedList<Action> guardBreak;
+	private LinkedList<Action> lightClose;
+	private LinkedList<Action> heavyClose;
+
+	private LinkedList<Action> antiAir;
+	private LinkedList<Action> antiAirSkill;
+
+	private LinkedList<Action> lightAir;
+	private LinkedList<Action> heavyAir;
+	private LinkedList<Action> airSkill;
+
+	private LinkedList<Action> cheapProjectiles;
+	private LinkedList<Action> airProjectiles;
+	private LinkedList<Action> ultimateProjectile;
+
+	private LinkedList<Action> heavyMid;
+
+	private LinkedList<Action> air;
+
+	private LinkedList<Action> ground;
+	
 	// MÉTODOS
 	@Override
 	public void close() {
@@ -63,35 +112,44 @@ public class JohnCobraBot implements AIInterface {
 
 	@Override
 	public void getInformation(FrameData frameData, boolean isControl) {
-		myCharacter = this.frameData.getCharacter(playerNumber);
-		opponent = this.frameData.getCharacter(!playerNumber);
-		myCharacterMotion = gameData.getMotionData(playerNumber);
-		opponentMotion = gameData.getMotionData(!playerNumber);
-
 		this.frameData = frameData;
 		this.cc.setFrameData(this.frameData, this.playerNumber);
-
+		myCharacterData=frameData.getCharacter(playerNumber);
+		opponentData=frameData.getCharacter(!playerNumber);
 	}
 
 	@Override
 	public int initialize(GameData gameData, boolean playerNumber) {
 
-		gapCloser = new LinkedList<Action>();
-		attackGround = new LinkedList<Action>();
-		attackAir = new LinkedList<Action>();
-		skillGround = new LinkedList<Action>();
-		skillAir = new LinkedList<Action>();
-		projectiles = new LinkedList<Action>();
+		getClose = new LinkedList<Action>();
+		getCloseSkill = new LinkedList<Action>();
+		evade = new LinkedList<Action>();
+		groundGuard = new LinkedList<Action>();
+		guardBreak = new LinkedList<Action>();
+		lightClose = new LinkedList<Action>();
+		heavyClose = new LinkedList<Action>();
+		antiAir = new LinkedList<Action>();
+		antiAirSkill = new LinkedList<Action>();
+		lightAir = new LinkedList<Action>();
+		heavyAir = new LinkedList<Action>();
+		airSkill = new LinkedList<Action>();
+		cheapProjectiles = new LinkedList<Action>();
+		airProjectiles = new LinkedList<Action>();
+		ultimateProjectile = new LinkedList<Action>();
+		heavyMid= new LinkedList<Action>();
+		air = new LinkedList<Action>();
+		ground = new LinkedList<Action>();
 
 		this.gameData = gameData;
 		this.playerNumber = playerNumber;
 		this.inputKey = new Key();
 		this.cc = new CommandCenter();
 		this.frameData = new FrameData();
-		mcts = new MCTS(playerNumber);
-		orderMoveSets();
-		System.out.println("round start");
-
+		orderMoves();
+		
+		myCharacterMotion=gameData.getMotionData(playerNumber);
+		opponentMotion=gameData.getMotionData(!playerNumber);
+		
 		return 0;
 	}
 
@@ -101,7 +159,7 @@ public class JohnCobraBot implements AIInterface {
 	}
 
 	@Override
-	public void processing() {
+	public void processing() { // DISTANCIA ATAQUE CLOSE 100 MAX 600-700
 
 		if (canProcess()) {
 			if (cc.getSkillFlag()) {
@@ -110,37 +168,22 @@ public class JohnCobraBot implements AIInterface {
 				inputKey.empty();
 				cc.skillCancel();
 
-				/*
-				 * mctsPrepare();
-				 * 
-				 * rootNode = new Node(simulatorAheadFrameData, null, myActions, oppActions,
-				 * gameData, playerNumber, cc); rootNode.createNode();
-				 * 
-				 * Action bestAction = rootNode.mcts(); if (JayBot.DEBUG_MODE) {
-				 * rootNode.printNode(rootNode); } if (charName.name() == "GARNET") {
-				 * if(bestAction.name()=="CROUCH_GUARD") { cc.
-				 * commandCall("1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 11"
-				 * ); } else if(bestAction.name()=="STAND_GUARD") { cc.
-				 * commandCall("4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4"
-				 * ); } else if(bestAction.name()=="Action.AIR_GUARD") { cc.
-				 * commandCall("7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7"
-				 * ); } } if (bestAction.name()=="STAND_GUARD")
-				 * cc.commandCall("4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4"); else
-				 * if(bestAction.name()=="CROUCH_GUARD")
-				 * cc.commandCall("1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"); else
-				 * if(bestAction.name()=="CROUCH_GUARD")
-				 * cc.commandCall("7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7"); else
-				 * cc.commandCall(bestAction.name());
-				 * 
-				 * setMyActionPool(); setOpponentActionPool();
-				 */
+				myActionPool = selectMyMoves();
+				enemyActionPool = selectEnemyMoves();
 
-				mcts.setNewRoot(frameData, gameData, attackGround, attackGround);
-				myActionPool = attackGround;
-				enemyActionPool = attackGround;
-				mcts.execute();
-				mcts.printRoot();
-				cc.commandCall(mcts.getMostVisitedChild().name());
+				MCTS mcts = new MCTS(playerNumber, frameData, gameData, myActionPool, enemyActionPool);
+				
+				int n=0;
+				mcts.root = new Node(null);
+				mcts.expansion(mcts.root);
+				long start = System.nanoTime();
+			    for (; System.nanoTime() - start <= PROCESSING_TIME;) {
+			    	mcts.executeOneIteration();
+			    	n++;
+			    }
+			    System.out.println("N: "+n);
+			    
+				cc.commandCall(mcts.getBestUCB1Child().name());
 
 			}
 		}
@@ -156,51 +199,225 @@ public class JohnCobraBot implements AIInterface {
 
 	}
 
-	public void orderMoveSets() {
+	public void orderMoves() {
 
-		gapCloser.add(Action.FOR_JUMP);
-		gapCloser.add(Action.FORWARD_WALK);
-		gapCloser.add(Action.STAND_D_DB_BA);
-		gapCloser.add(Action.STAND_D_DB_BB);
+		// MOVEMENT
 
-		attackGround.add(Action.STAND_A);
-		attackGround.add(Action.STAND_B);
-		attackGround.add(Action.CROUCH_A);
-		attackGround.add(Action.CROUCH_B);
-		attackGround.add(Action.STAND_FA);
-		attackGround.add(Action.STAND_FB);
-		attackGround.add(Action.CROUCH_FA);
-		attackGround.add(Action.CROUCH_FB);
-		attackGround.add(Action.STAND_F_D_DFA);
+		getClose.add(Action.FORWARD_WALK);
+		getClose.add(Action.DASH);
+		getClose.add(Action.FOR_JUMP);
+		getClose.add(Action.STAND_D_DB_BA); // Sato largo con puñetazo hacia delante
 
-		attackAir.add(Action.AIR_A);
-		attackAir.add(Action.AIR_B);
-		attackAir.add(Action.AIR_DA);
-		attackAir.add(Action.AIR_DB);
-		attackAir.add(Action.AIR_FA);
-		attackAir.add(Action.AIR_FB);
-		attackAir.add(Action.AIR_UA);
-		attackAir.add(Action.AIR_UB);
+		getCloseSkill.add(Action.STAND_D_DB_BB); // Zancadilla pesada con deslizamiento que derriba (-50)
 
-		skillGround.add(Action.THROW_A);
-		skillGround.add(Action.THROW_B);
-		skillGround.add(Action.STAND_D_DF_FA);
-		skillGround.add(Action.STAND_D_DF_FB);
-		skillGround.add(Action.STAND_D_DF_FC);
-		skillGround.add(Action.STAND_F_D_DFA);
-		skillGround.add(Action.STAND_F_D_DFB);
+		evade.add(Action.BACK_STEP);
+		evade.add(Action.BACK_JUMP);
+		evade.add(Action.JUMP);
 
-		skillAir.add(Action.AIR_D_DB_BA);
-		skillAir.add(Action.AIR_D_DB_BB);
-		skillAir.add(Action.AIR_D_DF_FA);
-		skillAir.add(Action.AIR_D_DF_FB);
-		skillAir.add(Action.AIR_F_D_DFA);
-		skillAir.add(Action.AIR_F_D_DFB);
+		groundGuard.add(Action.STAND_GUARD);
+		groundGuard.add(Action.CROUCH_GUARD);
 
-		projectiles.add(Action.STAND_D_DF_FA);
-		projectiles.add(Action.STAND_D_DF_FB);
-		projectiles.add(Action.STAND_D_DF_FC);
-		projectiles.add(Action.STAND_F_D_DFB);
+		// GROUND
+
+		lightClose.add(Action.STAND_A);
+		lightClose.add(Action.STAND_B);
+		lightClose.add(Action.CROUCH_A);
+		lightClose.add(Action.CROUCH_B);
+
+		heavyClose.add(Action.STAND_FA);
+		heavyClose.add(Action.CROUCH_FB);
+		
+		guardBreak.add(Action.THROW_A); // -5
+		guardBreak.add(Action.THROW_B); // -10
+
+		antiAir.add(Action.CROUCH_FA); // Puñetazo alto pesado
+		antiAir.add(Action.STAND_F_D_DFA); // Gancho medio que derriba
+		antiAir.add(Action.STAND_FB); // Patadon alto 
+
+		antiAirSkill.add(Action.STAND_F_D_DFB); // Gancho pesado de fuego que derriba (-55)
+
+		// AIR
+
+		lightAir.add(Action.AIR_A);
+		lightAir.add(Action.AIR_B);
+		//lightAir.add(Action.AIR_DA);
+		lightAir.add(Action.AIR_DB);
+
+		heavyAir.add(Action.AIR_FA);
+		heavyAir.add(Action.AIR_FB);
+		//heavyAir.add(Action.AIR_UA);
+		heavyAir.add(Action.AIR_UB);
+
+		cheapProjectiles.add(Action.STAND_D_DF_FA); // -5
+		cheapProjectiles.add(Action.STAND_D_DF_FB); // -30
+		
+		ultimateProjectile.add(Action.STAND_D_DF_FC); // -150
+		
+		airProjectiles.add(Action.AIR_D_DF_FA); // -5
+		airProjectiles.add(Action.AIR_D_DF_FB); // -20
+
+		/*
+		airSkill.add(Action.AIR_F_D_DFA); // Puñetazo ligero con inercia hacia delante (-10)
+		airSkill.add(Action.AIR_F_D_DFB); // Patada ligera con inercia hacia delante (-40)
+		airSkill.add(Action.AIR_D_DB_BA); // Puñetazo pesado con inercia hacia delante (-10)
+		airSkill.add(Action.AIR_D_DB_BB); // Patada pesada con inercia hacia delante (-50)
+		*/
+		
+		air.add(Action.AIR_A);
+		air.add(Action.AIR_B);
+		air.add(Action.AIR_DA);
+		air.add(Action.AIR_DB);
+		air.add(Action.AIR_FA);
+		air.add(Action.AIR_FB);
+		air.add(Action.AIR_UA);
+		air.add(Action.AIR_UB);
+		air.add(Action.AIR_D_DF_FA); 
+		air.add(Action.AIR_D_DF_FB); 
+		air.add(Action.AIR_F_D_DFA); // Puñetazo ligero con inercia hacia delante (-10)
+		air.add(Action.AIR_F_D_DFB); // Patada ligera con inercia hacia delante (-40)
+		air.add(Action.AIR_D_DB_BA); // Puñetazo pesado con inercia hacia delante (-10)
+		air.add(Action.AIR_D_DB_BB); // Patada pesada con inercia hacia delante (-50)
+		 
+		ground.add(Action.FORWARD_WALK);
+		ground.add(Action.DASH);
+		ground.add(Action.BACK_STEP);
+		ground.add(Action.JUMP);
+		ground.add(Action.FOR_JUMP);
+		ground.add(Action.BACK_JUMP);
+		ground.add(Action.STAND_GUARD);
+		ground.add(Action.CROUCH_GUARD);
+		ground.add(Action.STAND_A);
+		ground.add(Action.STAND_B);
+		ground.add(Action.THROW_A); 
+		ground.add(Action.THROW_B); 
+		ground.add(Action.CROUCH_A);
+		ground.add(Action.CROUCH_B);
+		ground.add(Action.STAND_FA);
+		ground.add(Action.STAND_FB); 
+		ground.add(Action.CROUCH_FA);
+		ground.add(Action.CROUCH_FB);
+		ground.add(Action.CROUCH_FA); 
+		ground.add(Action.STAND_F_D_DFA);
+		ground.add(Action.STAND_F_D_DFB);
+		ground.add(Action.STAND_D_DB_BA); 
+		ground.add(Action.STAND_D_DB_BB); 
+		
+	}
+
+	public LinkedList<Action> selectMyMoves() {
+
+		LinkedList<Action> selected = new LinkedList<Action>();
+
+		State myState = myCharacterData.getState();
+		State enemyState = opponentData.getState();
+		int myEnergy = myCharacterData.getEnergy();
+		int enemyEnergy = frameData.getCharacter(!playerNumber).getEnergy();
+		int x = frameData.getDistanceX();
+		Deque<AttackData> projectiles;
+
+		if (playerNumber)
+			projectiles = frameData.getProjectilesByP2();
+		else
+			projectiles = frameData.getProjectilesByP1();
+
+		// SELECCION PICADITA
+		
+		if (!projectiles.isEmpty())						//SI HAY PROJECTILES SALTA
+			selected.add(Action.FOR_JUMP);
+		
+		if(enemyEnergy > 130) 
+			selected.addAll(evade);
+
+		if (myState == State.AIR) { 					//SI ESTAS EN EL AIRE ATACA CON ALGO 
+			selected.addAll(lightAir);
+			selected.addAll(heavyAir);
+			if (myEnergy > 50) {
+				selected.addAll(airProjectiles);
+				if (x > 200) {
+					selected.addAll(airSkill);
+				}
+			}
+		}
+
+		if (myState == State.STAND) {
+			if((x <= 20)) {								//MUY CERCA AGARRE
+				if (myEnergy > 10) {
+					selected.addAll(guardBreak);
+				} 
+			} else if (x <= 50) {						//SI ESTAS CERCA LIGERO
+				selected.addAll(lightClose);
+				selected.addAll(groundGuard);
+			} else if (x > 50 && x <= 150) {			//MEDIA DISTANCIA FUERTE
+				selected.addAll(heavyClose);
+			} else if (x > 300) {						//LEJOS PROYECTIL O SALTO PA ALANTE
+				if (myEnergy > 150) {
+					selected.addAll(ultimateProjectile);
+				} else if (myEnergy > 30) {
+					selected.addAll(cheapProjectiles);
+				} else if (myEnergy < 30) {
+					selected.addAll(getClose);
+				}
+			}else {
+				if (myEnergy > 50) 
+					selected.addAll(getCloseSkill);
+				else
+					selected.addAll(getClose);
+			}
+		}
+		
+		if (myState == State.DOWN)						//TIRAO EN EL SUELO, HUIR
+			selected.addAll(guardBreak);
+			//selected.addAll(evade);
+		
+		if(myCharacterData.getCenterX()<40 || myCharacterData.getCenterX()>800)
+			selected.add(Action.FOR_JUMP);
+
+		if (enemyState == State.AIR) {					//ENEMIGO CERCA EN EL AIRE, ANTIAIR
+			if (x <= 100) {
+				selected.addAll(antiAir);
+				if (myEnergy > 55) {
+					selected.addAll(antiAirSkill);
+				}
+			}
+		}
+		
+		selected.add(Action.STAND_FA);
+		selected.add(Action.CROUCH_B);
+		selected.add(Action.STAND_GUARD);
+		selected.add(Action.CROUCH_GUARD);
+
+
+
+		return selected;
+
+	}
+
+	public LinkedList<Action> selectEnemyMoves() {
+		LinkedList<Action> selected = new LinkedList<Action>();
+		
+		//System.out.println(opponentData.getAction().name());
+		
+		State enemyState = opponentData.getState();
+		int enemyEnergy = opponentData.getEnergy();
+		int x = frameData.getDistanceX();
+		
+		if (enemyState == State.AIR) {
+			
+			for (int i = 0; i < air.size(); i++) {
+				if (Math.abs(opponentMotion.get(Action.valueOf(air.get(i).name()).ordinal()).getAttackStartAddEnergy()) <= enemyEnergy) {
+					selected.add(air.get(i));
+				}
+			}
+		} else {
+			
+			for (int i = 0; i < ground.size(); i++) {
+				if (Math.abs(opponentMotion.get(Action.valueOf(ground.get(i).name()).ordinal()).getAttackStartAddEnergy()) <= enemyEnergy) {
+					selected.add(ground.get(i));
+				}
+			}
+		}
+
+		return selected;
 
 	}
 
@@ -220,4 +437,30 @@ public class JohnCobraBot implements AIInterface {
 	 * ordinal()).getAttackStartAddEnergy()) <= energy) {
 	 * enemyActionPool.add(attackGround.get(i)); } } } }
 	 */
+	
+	/*
+	 * mctsPrepare();
+	 * 
+	 * rootNode = new Node(simulatorAheadFrameData, null, myActions, oppActions,
+	 * gameData, playerNumber, cc); rootNode.createNode();
+	 * 
+	 * Action bestAction = rootNode.mcts(); if (JayBot.DEBUG_MODE) {
+	 * rootNode.printNode(rootNode); } if (charName.name() == "GARNET") {
+	 * if(bestAction.name()=="CROUCH_GUARD") { cc.
+	 * commandCall("1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 11"
+	 * ); } else if(bestAction.name()=="STAND_GUARD") { cc.
+	 * commandCall("4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4"
+	 * ); } else if(bestAction.name()=="Action.AIR_GUARD") { cc.
+	 * commandCall("7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7"
+	 * ); } } if (bestAction.name()=="STAND_GUARD")
+	 * cc.commandCall("4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4 4"); else
+	 * if(bestAction.name()=="CROUCH_GUARD")
+	 * cc.commandCall("1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"); else
+	 * if(bestAction.name()=="CROUCH_GUARD")
+	 * cc.commandCall("7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7 7"); else
+	 * cc.commandCall(bestAction.name());
+	 * 
+	 * setMyActionPool(); setOpponentActionPool();
+	 */
+
 }
