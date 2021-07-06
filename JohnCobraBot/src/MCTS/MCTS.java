@@ -106,9 +106,6 @@ public class MCTS {
 	}
 
 	public void executeFull() {
-		System.out.println("POSICION: "+fd.getCharacter(player).getCenterX());
-		System.out.println("DISTANCIA: "+fd.getDistanceX());
-
 		root = new Node(null);
 		expansion(root);
 
@@ -145,7 +142,6 @@ public class MCTS {
 	}
 	
 	public boolean executeOneIteration() {
-		
 		
 		boolean doneIteration = false;
 		Node current = root;
