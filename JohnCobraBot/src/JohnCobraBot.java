@@ -190,6 +190,7 @@ public class JohnCobraBot implements AIInterface {
 
 	}
 
+
 	public boolean canProcess() {
 		return !frameData.getEmptyFlag() && frameData.getRemainingFramesNumber() > 0;
 	}
@@ -308,6 +309,15 @@ public class JohnCobraBot implements AIInterface {
 
 		LinkedList<Action> selected = new LinkedList<Action>();
 
+		return selected;
+
+	}
+
+	
+	/*	public LinkedList<Action> selectMyMoves() {
+
+		LinkedList<Action> selected = new LinkedList<Action>();
+
 		State myState = myCharacterData.getState();
 		State enemyState = opponentData.getState();
 		int myEnergy = myCharacterData.getEnergy();
@@ -349,11 +359,11 @@ public class JohnCobraBot implements AIInterface {
 				selected.addAll(groundGuard);
 			} else if (x > 50 && x <= 150) {			//MEDIA DISTANCIA FUERTE
 				selected.addAll(heavyClose);
+			} else if (myEnergy > 30 && x < 200) {
+				selected.addAll(cheapProjectiles);
 			} else if (x > 300) {						//LEJOS PROYECTIL O SALTO PA ALANTE
 				if (myEnergy > 150) {
 					selected.addAll(ultimateProjectile);
-				} else if (myEnergy > 30) {
-					selected.addAll(cheapProjectiles);
 				} else if (myEnergy < 30) {
 					selected.addAll(getClose);
 				}
@@ -390,8 +400,9 @@ public class JohnCobraBot implements AIInterface {
 
 		return selected;
 
-	}
-
+	}*/
+	
+	
 	public LinkedList<Action> selectEnemyMoves() {
 		LinkedList<Action> selected = new LinkedList<Action>();
 		
@@ -421,6 +432,7 @@ public class JohnCobraBot implements AIInterface {
 
 	}
 
+	
 	/*
 	 * public void setOpponentActionPool() { enemyActionPool.clear();
 	 * 

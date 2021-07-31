@@ -147,9 +147,11 @@ public class MCTS {
 		Node current = root;
 			
 		while (!doneIteration) {
-				
-			current = selection(current); 										// SELECIONA BEST UCB1
-				
+			printTree();
+			current = selection(current); 	
+			expansion(current);// SELECIONA BEST UCB1
+			printTree();
+
 			if (current.isLeaf()) { 											// SI ES HOJA -> SE HARÁ UNA SIMULACIÓN
 					
 				if (current.n == 0 && current.depth < DEPTH_LIMIT) { 			// SI NO HA SIDO VISITADA ANTES -> ADEMÁS SE LE AÑADIRAN LOS HIJOS	
